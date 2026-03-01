@@ -11,6 +11,10 @@ export interface Patient {
   zone?: string;
   woreda?: string;
   kebele?: string;
+  treatment_type?: string;
+  diabetes_type?: string;
+  cvd_risk?: string;
+  cvd_treatment_type?: string;
   created_at: string;
   last_visit?: string;
 }

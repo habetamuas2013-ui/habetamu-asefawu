@@ -26,7 +26,9 @@ import {
   Pencil,
   Trash2,
   Eye,
-  EyeOff
+  EyeOff,
+  Camera,
+  Upload
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -46,7 +48,7 @@ import { cn } from './lib/utils';
 import { Patient, Visit, ReportSummary } from './types';
 import { supabase } from './supabaseClient';
 
-type View = 'dashboard' | 'patients-list' | 'new-patient' | 'edit-patient' | 'repeat-patient' | 'visit-entry' | 'reports';
+type View = 'dashboard' | 'patients-list' | 'new-patient' | 'edit-patient' | 'repeat-patient' | 'visit-entry' | 'reports' | 'patient-report';
 type AuthMode = 'login' | 'signup';
 
 interface User {
@@ -77,6 +79,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
+  const [patientVisits, setPatientVisits] = useState<Visit[]>([]);
   const [reportMonth, setReportMonth] = useState<string>(new Date().getMonth() + 1 + '');
   const [reportYear, setReportYear] = useState<string>(new Date().getFullYear() + '');
 
@@ -93,6 +96,10 @@ export default function App() {
     zone: '',
     woreda: '',
     kebele: '',
+    treatment_type: 'Healthy Life Style Counciling (HLC) only',
+    diabetes_type: '',
+    cvd_risk: '',
+    cvd_treatment_type: '',
     created_at: new Date().toISOString().split('T')[0]
   });
 
@@ -172,8 +179,7 @@ export default function App() {
         .select('*, patients(name)')
         .gte('visit_date', startDate.split('T')[0])
         .lte('visit_date', endDate.split('T')[0])
-        .order('visit_date', { ascending: false })
-        .limit(10);
+        .order('visit_date', { ascending: false });
 
       if (visitsError) throw visitsError;
 
@@ -239,6 +245,23 @@ export default function App() {
       setPatients(processedPatients as any);
     } catch (err) {
       console.error('Error fetching patients:', err);
+    }
+  };
+
+  const fetchPatientVisits = async (patientId: string | number) => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('visits')
+        .select('*')
+        .eq('patient_id', patientId)
+        .order('visit_date', { ascending: false });
+      if (error) throw error;
+      setPatientVisits(data || []);
+    } catch (err) {
+      console.error('Error fetching patient visits:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -316,6 +339,7 @@ export default function App() {
 
       if (error) throw error;
 
+      await fetchPatients();
       // After creating patient, go to visit entry for this patient
       setSelectedPatient(data as any);
       setCurrentView('visit-entry');
@@ -331,6 +355,10 @@ export default function App() {
         zone: '',
         woreda: '',
         kebele: '',
+        treatment_type: 'Healthy Life Style Counciling (HLC) only',
+        diabetes_type: '',
+        cvd_risk: '',
+        cvd_treatment_type: '',
         created_at: new Date().toISOString().split('T')[0]
       });
       fetchSummary(reportMonth, reportYear);
@@ -401,6 +429,7 @@ export default function App() {
 
       if (error) throw error;
       
+      await fetchPatients();
       setNewVisit({ 
         systolic_bp: '', 
         diastolic_bp: '', 
@@ -516,6 +545,17 @@ export default function App() {
     }
   ] : [];
 
+  const [logoUrl, setLogoUrl] = useState('/api/image/logo');
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setLogoUrl(url);
+    }
+  };
+
   if (!user) {
     return (
       <div className="min-h-screen bg-[#F8F9FA] flex items-center justify-center p-4">
@@ -524,17 +564,31 @@ export default function App() {
           animate={{ opacity: 1, y: 0 }}
           className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden"
         >
-          <div className="bg-[#0D4D44] p-8 text-white text-center">
-            <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-4 p-2 shadow-lg">
+          <div className="bg-[#0D4D44] p-8 text-white text-center relative group">
+            <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-4 p-2 shadow-lg relative overflow-hidden">
               <img 
-                src="/api/image/logo" 
+                src={logoUrl} 
                 alt="ANRS Health Bureau Logo" 
                 className="w-full h-full object-contain"
                 referrerPolicy="no-referrer"
               />
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Change Logo"
+              >
+                <Camera className="w-6 h-6 text-white" />
+              </button>
             </div>
             <h1 className="text-2xl font-bold">HealthTrack</h1>
             <p className="text-emerald-200/60 text-xs uppercase tracking-widest font-bold mt-1">Patient Follow-Up System</p>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleLogoUpload} 
+              className="hidden" 
+              accept="image/*" 
+            />
           </div>
           
           <div className="p-8">
@@ -658,13 +712,27 @@ export default function App() {
     <div className="min-h-screen bg-[#F8F9FA] text-[#1A1A1A] font-sans flex">
       {/* Sidebar / Navigation */}
       <nav className="fixed top-0 left-0 h-full w-72 bg-[#0D4D44] text-white hidden md:flex flex-col z-10 shadow-xl">
-        <div className="p-8 flex flex-col items-center text-center">
-          <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-4 p-2 shadow-lg">
+        <div className="p-8 flex flex-col items-center text-center relative group">
+          <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-4 p-2 shadow-lg relative overflow-hidden">
             <img 
-              src="/api/image/logo" 
+              src={logoUrl} 
               alt="ANRS Health Bureau Logo" 
               className="w-full h-full object-contain"
               referrerPolicy="no-referrer"
+            />
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              title="Change Logo"
+            >
+              <Camera className="w-6 h-6 text-white" />
+            </button>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleLogoUpload} 
+              className="hidden" 
+              accept="image/*" 
             />
           </div>
           <div className="flex items-center gap-2 mb-1">
@@ -697,38 +765,20 @@ export default function App() {
             label="Register"
           />
           <NavItem 
+            active={currentView === 'reports'} 
+            onClick={() => setCurrentView('reports')}
+            icon={<FileText className="w-5 h-5" />}
+            label="Report Dashboard"
+          />
+          <NavItem 
             active={currentView === 'repeat-patient'} 
             onClick={() => setCurrentView('repeat-patient')}
             icon={<Activity className="w-5 h-5" />}
             label="Follow Up"
           />
-          {user?.role === 'admin' && (
-            <NavItem 
-              active={currentView === 'reports'} 
-              onClick={() => setCurrentView('reports')}
-              icon={<FileText className="w-5 h-5" />}
-              label="Reports"
-            />
-          )}
         </div>
 
         <div className="p-6 mt-auto border-t border-white/10 space-y-4">
-          <div className="flex items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/5">
-            <div className="w-10 h-10 rounded-xl bg-emerald-400 flex items-center justify-center text-[#0D4D44] font-black">
-              {user.full_name.charAt(0).toUpperCase()}
-            </div>
-            <div className="text-left">
-              <p className="text-sm font-bold text-white leading-none">{user.full_name}</p>
-              <p className="text-[10px] text-emerald-200/40 font-bold uppercase tracking-widest mt-1">{user.role}</p>
-            </div>
-          </div>
-          <div>
-            <div className="text-xs text-emerald-200/40 uppercase font-bold tracking-wider mb-2">System Status</div>
-            <div className="flex items-center gap-2 text-sm text-emerald-400">
-              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              Database Connected
-            </div>
-          </div>
           <button 
             onClick={handleLogout}
             className="w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all font-bold text-sm text-rose-300 hover:bg-rose-500/10 hover:text-rose-400 mt-2"
@@ -769,12 +819,45 @@ export default function App() {
                     Overview for {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][parseInt(reportMonth) - 1]} {reportYear}
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2 bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
+                    <select 
+                      value={reportMonth}
+                      onChange={(e) => {
+                        setReportMonth(e.target.value);
+                        fetchSummary(e.target.value, reportYear);
+                      }}
+                      className="bg-transparent border-none focus:ring-0 text-sm font-bold text-[#0D4D44] outline-none cursor-pointer px-2"
+                    >
+                      {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((m, i) => (
+                        <option key={m} value={i + 1}>{m}</option>
+                      ))}
+                    </select>
+                    <div className="w-px h-4 bg-gray-200" />
+                    <select 
+                      value={reportYear}
+                      onChange={(e) => {
+                        setReportYear(e.target.value);
+                        fetchSummary(reportMonth, e.target.value);
+                      }}
+                      className="bg-transparent border-none focus:ring-0 text-sm font-bold text-[#0D4D44] outline-none cursor-pointer px-2"
+                    >
+                      {[2024, 2025, 2026, 2027].map(y => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                  </div>
                   <button 
                     onClick={() => setCurrentView('new-patient')}
                     className="bg-[#24978D] text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-[#24978D]/20 hover:bg-[#1E857B] transition-all"
                   >
                     Register Patient
+                  </button>
+                  <button 
+                    onClick={() => setCurrentView('reports')}
+                    className="bg-emerald-50 text-emerald-700 border-2 border-emerald-100 px-6 py-3 rounded-xl font-bold hover:bg-emerald-100 transition-all"
+                  >
+                    Report Dashboard
                   </button>
                   <button 
                     onClick={() => setCurrentView('repeat-patient')}
@@ -820,7 +903,7 @@ export default function App() {
 
               <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="p-8 border-b border-gray-100 flex justify-between items-center">
-                  <h3 className="text-xl font-bold text-[#0D4D44]">Recent Activity</h3>
+                  <h3 className="text-xl font-bold text-[#0D4D44]">Monthly Follow-up Visits</h3>
                   <button 
                     onClick={() => setCurrentView('reports')}
                     className="text-[#24978D] font-bold hover:underline"
@@ -863,7 +946,6 @@ export default function App() {
                           </td>
                           <td className="px-8 py-5 text-gray-500 font-medium">{visit.weight}</td>
                           <td className="px-8 py-5 text-center">
-                              {user?.role === 'admin' && (
                                 <button 
                                   onClick={() => handleDeleteVisit(visit.id)}
                                   className="p-2 rounded-lg text-rose-400 hover:bg-rose-50 hover:text-rose-600 transition-all"
@@ -871,7 +953,6 @@ export default function App() {
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
-                              )}
                           </td>
                         </tr>
                       ))}
@@ -929,6 +1010,7 @@ export default function App() {
                         <th className="px-4 py-5">Gender</th>
                         <th className="px-4 py-5">Condition</th>
                         <th className="px-4 py-5">Type</th>
+                        <th className="px-4 py-5">Treatment</th>
                         <th className="px-4 py-5">Date</th>
                         <th className="px-4 py-5 text-center">Actions</th>
                       </tr>
@@ -948,6 +1030,9 @@ export default function App() {
                                   c === 'Diabetes' ? "bg-blue-500" : "bg-rose-500"
                                 )}>
                                   {c}
+                                  {c === 'Diabetes' && patient.diabetes_type && (
+                                    <span className="ml-1 opacity-80 text-[8px] lowercase">({patient.diabetes_type})</span>
+                                  )}
                                 </span>
                               ))}
                             </div>
@@ -959,6 +1044,9 @@ export default function App() {
                             )}>
                               {patient.patient_type}
                             </span>
+                          </td>
+                          <td className="px-4 py-6 text-gray-600 text-xs font-medium">
+                            {patient.treatment_type || 'N/A'}
                           </td>
                           <td className="px-4 py-6 text-gray-400 text-sm">
                             {new Date(patient.created_at).toISOString().split('T')[0]}
@@ -974,31 +1062,27 @@ export default function App() {
                               >
                                 Follow Up
                               </button>
-                              {user?.role === 'admin' && (
-                                <button 
-                                  onClick={() => {
-                                    setEditingPatient(patient);
-                                    setCurrentView('edit-patient');
-                                  }}
-                                  className="p-2 rounded-xl bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all"
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </button>
-                              )}
-                              {user?.role === 'admin' && (
-                                <button 
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    console.log('Delete button clicked for patient ID:', patient.id);
-                                    handleDeletePatient(patient.id);
-                                  }}
-                                  className="p-2 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition-all flex items-center justify-center"
-                                  title="Delete Patient"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              )}
+                              <button 
+                                onClick={() => {
+                                  setEditingPatient(patient);
+                                  setCurrentView('edit-patient');
+                                }}
+                                className="p-2 rounded-xl bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all"
+                                title="Edit Patient"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button 
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeletePatient(patient.id);
+                                }}
+                                className="p-2 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition-all flex items-center justify-center"
+                                title="Delete Patient"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1102,13 +1186,56 @@ export default function App() {
                       <select 
                         required
                         value={editingPatient.conditions}
-                        onChange={e => setEditingPatient({...editingPatient, conditions: e.target.value})}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setEditingPatient({...editingPatient, conditions: val, diabetes_type: val.includes('Diabetes') ? editingPatient.diabetes_type : ''});
+                        }}
                         className="w-full px-5 py-4 rounded-xl bg-gray-50 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[#24978D]/20 focus:border-[#24978D] transition-all"
                       >
                         <option value="">Select condition</option>
                         <option>Hypertension</option>
                         <option>Diabetes</option>
                         <option>Hypertension, Diabetes</option>
+                      </select>
+                    </div>
+                    {editingPatient.conditions.includes('Diabetes') && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-bold text-gray-700">Type of Diabetes *</label>
+                        <select 
+                          required
+                          value={editingPatient.diabetes_type || ''}
+                          onChange={e => setEditingPatient({...editingPatient, diabetes_type: e.target.value})}
+                          className="w-full px-5 py-4 rounded-xl bg-gray-50 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[#24978D]/20 focus:border-[#24978D] transition-all"
+                        >
+                          <option value="">Select type</option>
+                          <option value="Type I">Type I</option>
+                          <option value="Type II">Type II</option>
+                          <option value="Gestational DM">Gestational DM</option>
+                        </select>
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-gray-700">CVD Risk Category</label>
+                      <select 
+                        value={editingPatient.cvd_risk || ''}
+                        onChange={e => setEditingPatient({...editingPatient, cvd_risk: e.target.value})}
+                        className="w-full px-5 py-4 rounded-xl bg-gray-50 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[#24978D]/20 focus:border-[#24978D] transition-all"
+                      >
+                        <option value="">Select risk category</option>
+                        <option value="Lab based ( >=20%)">Lab based ( {'>'}=20%)</option>
+                        <option value="Non-Lab based (>=10%)">Non-Lab based ({'>'}=10%)</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-gray-700">CVD Risk by type of treatment</label>
+                      <select 
+                        value={editingPatient.cvd_treatment_type || ''}
+                        onChange={e => setEditingPatient({...editingPatient, cvd_treatment_type: e.target.value})}
+                        className="w-full px-5 py-4 rounded-xl bg-gray-50 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[#24978D]/20 focus:border-[#24978D] transition-all"
+                      >
+                        <option value="">Select treatment type</option>
+                        <option value="With Statin">With Statin</option>
+                        <option value="Without Statin">Without Statin</option>
                       </select>
                     </div>
                     <div className="space-y-2">
@@ -1121,6 +1248,18 @@ export default function App() {
                       >
                         <option value="New">New Patient</option>
                         <option value="Repeat">Repeat Patient</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-gray-700">Type of Treatment *</label>
+                      <select 
+                        required
+                        value={editingPatient.treatment_type || 'Healthy Life Style Counciling (HLC) only'}
+                        onChange={e => setEditingPatient({...editingPatient, treatment_type: e.target.value})}
+                        className="w-full px-5 py-4 rounded-xl bg-gray-50 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[#24978D]/20 focus:border-[#24978D] transition-all"
+                      >
+                        <option value="Healthy Life Style Counciling (HLC) only">Healthy Life Style Counciling (HLC) only</option>
+                        <option value="Pharmacological Management and HLC">Pharmacological Management and HLC</option>
                       </select>
                     </div>
                   </div>
@@ -1178,17 +1317,33 @@ export default function App() {
                     type="submit"
                     className="bg-[#24978D] text-white px-10 py-4 rounded-xl font-bold hover:bg-[#1E857B] transition-all shadow-lg shadow-[#24978D]/20 disabled:opacity-50"
                   >
-                    {loading ? "Updating..." : "Update Patient"}
+                    {loading ? "Saving..." : "Save Changes"}
                   </button>
                   <button 
                     type="button"
                     onClick={() => {
-                      setEditingPatient(null);
-                      setCurrentView('patients-list');
+                      setEditingPatient({
+                        ...editingPatient,
+                        mrn: '',
+                        name: '',
+                        age: '',
+                        gender: '',
+                        contact: '',
+                        patient_type: 'New',
+                        conditions: '',
+                        region: '',
+                        zone: '',
+                        woreda: '',
+                        kebele: '',
+                        treatment_type: 'Healthy Life Style Counciling (HLC) only',
+                        diabetes_type: '',
+                        cvd_risk: '',
+                        cvd_treatment_type: ''
+                      });
                     }}
                     className="bg-gray-50 text-gray-600 px-10 py-4 rounded-xl font-bold border border-gray-200 hover:bg-gray-100 transition-all"
                   >
-                    Cancel
+                    Clear
                   </button>
                 </div>
               </form>
@@ -1286,13 +1441,56 @@ export default function App() {
                       <select 
                         required
                         value={newPatient.conditions[0] || ''}
-                        onChange={e => setNewPatient({...newPatient, conditions: [e.target.value]})}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setNewPatient({...newPatient, conditions: [val], diabetes_type: val.includes('Diabetes') ? newPatient.diabetes_type : ''});
+                        }}
                         className="w-full px-5 py-4 rounded-xl bg-gray-50 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[#24978D]/20 focus:border-[#24978D] transition-all"
                       >
                         <option value="">Select condition</option>
                         <option>Hypertension</option>
                         <option>Diabetes</option>
                         <option>Hypertension, Diabetes</option>
+                      </select>
+                    </div>
+                    {newPatient.conditions.some(c => c.includes('Diabetes')) && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-bold text-gray-700">Type of Diabetes *</label>
+                        <select 
+                          required
+                          value={newPatient.diabetes_type}
+                          onChange={e => setNewPatient({...newPatient, diabetes_type: e.target.value})}
+                          className="w-full px-5 py-4 rounded-xl bg-gray-50 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[#24978D]/20 focus:border-[#24978D] transition-all"
+                        >
+                          <option value="">Select type</option>
+                          <option value="Type I">Type I</option>
+                          <option value="Type II">Type II</option>
+                          <option value="Gestational DM">Gestational DM</option>
+                        </select>
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-gray-700">CVD Risk Category</label>
+                      <select 
+                        value={newPatient.cvd_risk}
+                        onChange={e => setNewPatient({...newPatient, cvd_risk: e.target.value})}
+                        className="w-full px-5 py-4 rounded-xl bg-gray-50 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[#24978D]/20 focus:border-[#24978D] transition-all"
+                      >
+                        <option value="">Select risk category</option>
+                        <option value="Lab based ( >=20%)">Lab based ( {'>'}=20%)</option>
+                        <option value="Non-Lab based (>=10%)">Non-Lab based ({'>'}=10%)</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-gray-700">CVD Risk by type of treatment</label>
+                      <select 
+                        value={newPatient.cvd_treatment_type}
+                        onChange={e => setNewPatient({...newPatient, cvd_treatment_type: e.target.value})}
+                        className="w-full px-5 py-4 rounded-xl bg-gray-50 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[#24978D]/20 focus:border-[#24978D] transition-all"
+                      >
+                        <option value="">Select treatment type</option>
+                        <option value="With Statin">With Statin</option>
+                        <option value="Without Statin">Without Statin</option>
                       </select>
                     </div>
                     <div className="space-y-2">
@@ -1316,6 +1514,18 @@ export default function App() {
                         onChange={e => setNewPatient({...newPatient, created_at: e.target.value})}
                         className="w-full px-5 py-4 rounded-xl bg-gray-50 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[#24978D]/20 focus:border-[#24978D] transition-all"
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-gray-700">Type of Treatment *</label>
+                      <select 
+                        required
+                        value={newPatient.treatment_type}
+                        onChange={e => setNewPatient({...newPatient, treatment_type: e.target.value})}
+                        className="w-full px-5 py-4 rounded-xl bg-gray-50 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-[#24978D]/20 focus:border-[#24978D] transition-all"
+                      >
+                        <option value="Healthy Life Style Counciling (HLC) only">Healthy Life Style Counciling (HLC) only</option>
+                        <option value="Pharmacological Management and HLC">Pharmacological Management and HLC</option>
+                      </select>
                     </div>
                   </div>
                 </div>
@@ -1372,14 +1582,33 @@ export default function App() {
                     type="submit"
                     className="bg-[#24978D] text-white px-10 py-4 rounded-xl font-bold hover:bg-[#1E857B] transition-all shadow-lg shadow-[#24978D]/20 disabled:opacity-50"
                   >
-                    {loading ? "Registering..." : "Register Patient"}
+                    {loading ? "Saving..." : "Save & Register Patient"}
                   </button>
                   <button 
                     type="button"
-                    onClick={() => setCurrentView('dashboard')}
+                    onClick={() => {
+                      setNewPatient({
+                        mrn: '',
+                        name: '',
+                        age: '',
+                        gender: '',
+                        contact: '',
+                        patient_type: 'New',
+                        conditions: [],
+                        region: '',
+                        zone: '',
+                        woreda: '',
+                        kebele: '',
+                        treatment_type: 'Healthy Life Style Counciling (HLC) only',
+                        diabetes_type: '',
+                        cvd_risk: '',
+                        cvd_treatment_type: '',
+                        created_at: new Date().toISOString().split('T')[0]
+                      });
+                    }}
                     className="bg-gray-50 text-gray-600 px-10 py-4 rounded-xl font-bold border border-gray-200 hover:bg-gray-100 transition-all"
                   >
-                    Cancel
+                    Clear
                   </button>
                 </div>
               </form>
@@ -1774,10 +2003,139 @@ export default function App() {
                     type="submit"
                     className="flex-[2] bg-[#24978D] text-white py-5 rounded-3xl font-black uppercase tracking-widest hover:bg-[#1E857B] transition-all shadow-xl shadow-[#24978D]/20 disabled:opacity-50"
                   >
-                    {loading ? "Processing..." : "Submit Clinical Record"}
+                    {loading ? "Saving..." : "Save Clinical Record"}
                   </button>
                 </div>
               </form>
+            </motion.div>
+          )}
+
+          {currentView === 'patient-report' && selectedPatient && (
+            <motion.div 
+              key="patient-report"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-8"
+            >
+              <header className="flex items-center gap-4">
+                <button 
+                  onClick={() => setCurrentView('patients-list')}
+                  className="p-3 rounded-xl bg-white border border-gray-100 text-gray-400 hover:text-[#0D4D44] transition-all"
+                >
+                  <ArrowLeft className="w-6 h-6" />
+                </button>
+                <div>
+                  <h1 className="text-4xl font-bold tracking-tight text-[#0D4D44]">Patient Report</h1>
+                  <p className="text-gray-500">Clinical history for {selectedPatient.name}</p>
+                </div>
+              </header>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-1 space-y-8">
+                  <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+                    <h3 className="text-xl font-bold text-[#0D4D44] mb-6">Patient Profile</h3>
+                    <div className="space-y-4">
+                      <div className="flex justify-between py-2 border-b border-gray-50">
+                        <span className="text-gray-400 font-medium">MRN</span>
+                        <span className="font-bold text-[#0D4D44]">{selectedPatient.mrn || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-gray-50">
+                        <span className="text-gray-400 font-medium">Age</span>
+                        <span className="font-bold text-[#0D4D44]">{selectedPatient.age} Years</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-gray-50">
+                        <span className="text-gray-400 font-medium">Gender</span>
+                        <span className="font-bold text-[#0D4D44]">{selectedPatient.gender}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-gray-50">
+                        <span className="text-gray-400 font-medium">Type</span>
+                        <span className="font-bold text-[#0D4D44]">{selectedPatient.patient_type}</span>
+                      </div>
+                      {selectedPatient.cvd_risk && (
+                        <div className="flex justify-between py-2 border-b border-gray-50">
+                          <span className="text-gray-400 font-medium">CVD Risk</span>
+                          <span className="font-bold text-rose-600">{selectedPatient.cvd_risk}</span>
+                        </div>
+                      )}
+                      {selectedPatient.cvd_treatment_type && (
+                        <div className="flex justify-between py-2 border-b border-gray-50">
+                          <span className="text-gray-400 font-medium">CVD Treatment</span>
+                          <span className="font-bold text-emerald-600">{selectedPatient.cvd_treatment_type}</span>
+                        </div>
+                      )}
+                      <div className="pt-4">
+                        <p className="text-gray-400 font-medium mb-3">Conditions</p>
+                        <div className="flex flex-wrap gap-2">
+                          {(selectedPatient.conditions || '').split(', ').filter(Boolean).map(c => (
+                            <span key={c} className={cn(
+                              "px-3 py-1 rounded-full text-[10px] font-bold text-white uppercase tracking-wider",
+                              c === 'Diabetes' ? "bg-blue-500" : "bg-rose-500"
+                            )}>
+                              {c}
+                              {c === 'Diabetes' && selectedPatient.diabetes_type && (
+                                <span className="ml-1 opacity-80 text-[8px] lowercase">({selectedPatient.diabetes_type})</span>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="lg:col-span-2 space-y-8">
+                  <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="p-8 border-b border-gray-100">
+                      <h3 className="text-xl font-bold text-[#0D4D44]">Visit History</h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead className="bg-gray-50 text-gray-400 text-xs uppercase tracking-[0.1em] font-bold">
+                          <tr>
+                            <th className="px-8 py-5">Date</th>
+                            <th className="px-8 py-5">BP</th>
+                            <th className="px-8 py-5">Sugar</th>
+                            <th className="px-8 py-5">Weight</th>
+                            <th className="px-8 py-5">Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {patientVisits.length > 0 ? (
+                            patientVisits.map((visit) => (
+                              <tr key={visit.id} className="hover:bg-gray-50/50 transition-colors">
+                                <td className="px-8 py-5 text-gray-500 font-medium">{new Date(visit.visit_date).toLocaleDateString()}</td>
+                                <td className="px-8 py-5">
+                                  <span className={cn(
+                                    "px-3 py-1 rounded-lg text-xs font-bold",
+                                    visit.systolic_bp > 140 || visit.diastolic_bp > 90 ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"
+                                  )}>
+                                    {visit.systolic_bp}/{visit.diastolic_bp}
+                                  </span>
+                                </td>
+                                <td className="px-8 py-5">
+                                  <span className={cn(
+                                    "px-3 py-1 rounded-lg text-xs font-bold",
+                                    visit.blood_sugar_level > 140 ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"
+                                  )}>
+                                    {visit.blood_sugar_level}
+                                  </span>
+                                </td>
+                                <td className="px-8 py-5 text-gray-500 font-medium">{visit.weight}kg</td>
+                                <td className="px-8 py-5 text-gray-400 text-sm">{visit.notes || '-'}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={5} className="px-8 py-10 text-center text-gray-400">No visits recorded yet.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </motion.div>
           )}
 
@@ -1791,7 +2149,7 @@ export default function App() {
             >
               <header className="flex justify-between items-start">
                 <div>
-                  <h1 className="text-4xl font-bold tracking-tight text-[#0D4D44]">Reports</h1>
+                  <h1 className="text-4xl font-bold tracking-tight text-[#0D4D44]">Report Dashboard</h1>
                   <p className="text-gray-500 mt-1 text-lg">
                     Analytics for {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][parseInt(reportMonth) - 1]} {reportYear}
                   </p>
@@ -1823,6 +2181,25 @@ export default function App() {
                   </select>
                 </div>
               </header>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Total Visits</p>
+                  <p className="text-3xl font-black text-[#0D4D44]">{summary?.recentVisits?.length || 0}</p>
+                </div>
+                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">New Patients</p>
+                  <p className="text-3xl font-black text-[#24978D]">{summary?.newPatients || 0}</p>
+                </div>
+                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Repeat Patients</p>
+                  <p className="text-3xl font-black text-orange-400">{summary?.repeatPatients || 0}</p>
+                </div>
+                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Total Registered</p>
+                  <p className="text-3xl font-black text-[#0D4D44]">{summary?.totalPatients || 0}</p>
+                </div>
+              </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
@@ -1910,6 +2287,58 @@ export default function App() {
                         <Bar dataKey="Other" fill={COLORS.other} radius={[4, 4, 0, 0]} barSize={60} />
                       </BarChart>
                     </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 lg:col-span-2">
+                  <h3 className="text-2xl font-bold text-[#0D4D44] mb-8">Follow-up Visits for {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][parseInt(reportMonth) - 1]}</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead className="bg-gray-50 text-gray-400 text-xs uppercase tracking-[0.1em] font-bold">
+                        <tr>
+                          <th className="px-8 py-5">Patient Name</th>
+                          <th className="px-8 py-5">Visit Date</th>
+                          <th className="px-8 py-5">BP (mmHg)</th>
+                          <th className="px-8 py-5">Sugar (mg/dL)</th>
+                          <th className="px-8 py-5">Weight (kg)</th>
+                          <th className="px-8 py-5">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {(summary?.recentVisits || []).length > 0 ? (
+                          (summary?.recentVisits || []).map((visit) => (
+                            <tr key={visit.id} className="hover:bg-gray-50/50 transition-colors">
+                              <td className="px-8 py-5 font-bold text-[#0D4D44]">{visit.patient_name}</td>
+                              <td className="px-8 py-5 text-gray-500">{new Date(visit.visit_date).toLocaleDateString()}</td>
+                              <td className="px-8 py-5">
+                                <span className={cn(
+                                  "px-3 py-1 rounded-lg text-xs font-bold",
+                                  visit.systolic_bp > 140 || visit.diastolic_bp > 90 ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"
+                                )}>
+                                  {visit.systolic_bp}/{visit.diastolic_bp}
+                                </span>
+                              </td>
+                              <td className="px-8 py-5">
+                                <span className={cn(
+                                  "px-3 py-1 rounded-lg text-xs font-bold",
+                                  visit.blood_sugar_level > 140 ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"
+                                )}>
+                                  {visit.blood_sugar_level}
+                                </span>
+                              </td>
+                              <td className="px-8 py-5 text-gray-500 font-medium">{visit.weight}</td>
+                              <td className="px-8 py-5 text-gray-400 text-sm truncate max-w-[200px]">{visit.notes || '-'}</td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={6} className="px-8 py-10 text-center text-gray-400 font-medium">
+                              No visits recorded for this month.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               </div>

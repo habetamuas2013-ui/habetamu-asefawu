@@ -33,6 +33,10 @@ db.exec(`
     zone TEXT,
     woreda TEXT,
     kebele TEXT,
+    treatment_type TEXT,
+    diabetes_type TEXT,
+    cvd_risk TEXT,
+    cvd_treatment_type TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -63,7 +67,7 @@ db.exec(`
 const ensureColumns = () => {
   const tables = {
     users: ['role'],
-    patients: ['mrn', 'region', 'zone', 'woreda', 'kebele'],
+    patients: ['mrn', 'region', 'zone', 'woreda', 'kebele', 'treatment_type', 'diabetes_type', 'cvd_risk', 'cvd_treatment_type'],
     visits: ['heart_rate', 'temperature', 'respiratory_rate', 'spo2', 'hba1c', 'creatinine', 'cholesterol', 'triglycerides', 'urinalysis', 'complications']
   };
 
@@ -180,11 +184,11 @@ async function startServer() {
   // Add new patient
   app.post("/api/patients", (req, res) => {
     try {
-      const { mrn, name, age, gender, contact, conditions, patient_type, region, zone, woreda, kebele, created_at } = req.body;
+      const { mrn, name, age, gender, contact, conditions, patient_type, region, zone, woreda, kebele, treatment_type, diabetes_type, cvd_risk, cvd_treatment_type, created_at } = req.body;
       const finalMrn = mrn || Math.floor(100000 + Math.random() * 900000).toString();
       const info = db.prepare(
-        "INSERT INTO patients (mrn, name, age, gender, contact, conditions, patient_type, region, zone, woreda, kebele, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-      ).run(finalMrn, name, age, gender, contact, conditions, patient_type || 'New', region, zone, woreda, kebele, created_at || new Date().toISOString());
+        "INSERT INTO patients (mrn, name, age, gender, contact, conditions, patient_type, region, zone, woreda, kebele, treatment_type, diabetes_type, cvd_risk, cvd_treatment_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      ).run(finalMrn, name, age, gender, contact, conditions, patient_type || 'New', region, zone, woreda, kebele, treatment_type, diabetes_type, cvd_risk, cvd_treatment_type, created_at || new Date().toISOString());
       res.json({ id: info.lastInsertRowid, mrn: finalMrn });
     } catch (err) {
       console.error("Error creating patient:", err);
@@ -253,15 +257,15 @@ async function startServer() {
   app.put("/api/patients/:id", (req, res) => {
     try {
       const { id } = req.params;
-      const { mrn, name, age, gender, contact, conditions, patient_type, region, zone, woreda, kebele } = req.body;
+      const { mrn, name, age, gender, contact, conditions, patient_type, region, zone, woreda, kebele, treatment_type, diabetes_type, cvd_risk, cvd_treatment_type } = req.body;
       
       db.prepare(`
         UPDATE patients SET 
           mrn = ?, name = ?, age = ?, gender = ?, contact = ?, 
           conditions = ?, patient_type = ?, region = ?, zone = ?, 
-          woreda = ?, kebele = ?
+          woreda = ?, kebele = ?, treatment_type = ?, diabetes_type = ?, cvd_risk = ?, cvd_treatment_type = ?
         WHERE id = ?
-      `).run(mrn, name, age, gender, contact, conditions, patient_type, region, zone, woreda, kebele, id);
+      `).run(mrn, name, age, gender, contact, conditions, patient_type, region, zone, woreda, kebele, treatment_type, diabetes_type, cvd_risk, cvd_treatment_type, id);
       
       res.json({ success: true });
     } catch (err) {

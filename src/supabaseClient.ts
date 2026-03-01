@@ -1,6 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = "https://scprzpdvmfmcdhjigrjw.supabase.co";
-const SUPABASE_PUBLIC_KEY = "sb_publishable_l5tbI25sru3sXRK0-KEVNQ_W2dbMRH0";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY);
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.warn("Supabase credentials missing. Data will not be saved permanently until VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are configured in the Secrets panel.");
+}
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
